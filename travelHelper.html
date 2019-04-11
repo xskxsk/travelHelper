@@ -1,0 +1,238 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>旅行助手</title>
+    <style>
+        html, body {
+          width: 100%;
+          height: 100%;
+          margin: 0px;
+        }
+        #container {
+          display: flex;
+          width: 100%;
+          height: 100%;
+        }
+        #map {
+          width: 60%;
+          height: 100%;
+          margin: 0px 5px 0px;
+        }
+        #news {
+          width: 40%;
+          height: 100%;
+        }
+        #content {
+          height: 90%;
+          margin-bottom: 0px;
+          overflow: auto;
+        }
+        #newsItem:hover {
+            cursor: pointer;
+        }
+        @keyframes spinner-line-fade-more {
+            0%, 100% {
+                opacity: 0; /* minimum opacity */
+            }
+            1% {
+                opacity: 1;
+            }
+        }
+        @keyframes spinner-line-fade-quick {
+            0%, 39%, 100% {
+                opacity: 0.25; /* minimum opacity */
+            }
+            40% {
+                opacity: 1;
+            }
+        }
+        @keyframes spinner-line-fade-default {
+            0%, 100% {
+                opacity: 0.22; /* minimum opacity */
+            }
+            1% {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container">
+        <div id="map"></div>
+        <div id="news">
+            <div style="height:10%;text-align:center;line-height:50px;background-color: rgb(205, 216, 228)"><span id="city" style="font-size: 40px"><b>地区：</b></span></div>
+            <div id="content"></div>
+        </div>
+    </div>
+</body>
+
+<script src="https://cdn.staticfile.org/jquery/1.10.2/jquery.min.js"></script>
+<script src="https://webapi.amap.com/maps?v=1.4.14&key=87903bbf7f76e70a236f29485496c80e"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.js"></script>
+<script>
+    var city = "上海", lat, lng;
+    //alimap
+    var map = new AMap.Map('map', {
+        resizeEnable: true, //是否监控地图容器尺寸变化
+        zoom: 7, //初始化地图层级
+    });
+    //旋转插件
+    var opts = {
+        lines: 13, // The number of lines to draw
+        length: 38, // The length of each line
+        width: 17, // The line thickness
+        radius: 45, // The radius of the inner circle
+        scale: 1, // Scales overall size of the spinner
+        corners: 1, // Corner roundness (0..1)
+        color: '#ffffff', // CSS color or array of colors
+        fadeColor: 'transparent', // CSS color or array of colors
+        speed: 1, // Rounds per second
+        rotate: 0, // The rotation offset
+        animation: 'spinner-line-fade-quick', // The CSS animation name for the lines
+        direction: 1, // 1: clockwise, -1: counterclockwise
+        zIndex: 2e9, // The z-index (defaults to 2000000000)
+        className: 'spinner', // The CSS class to assign to the spinner
+        top: '100px', // Top position relative to parent
+        left: '50%', // Left position relative to parent
+        shadow: '0 0 1px transparent', // Box-shadow for the lines
+        position: 'relative' // Element positioning
+    };
+    var spinner = new Spinner(opts);
+    AMap.plugin([
+        'AMap.ToolBar',
+        'AMap.Scale',
+        'AMap.OverView',
+        'AMap.MapType',
+        'AMap.Geolocation',
+    ] ,function(){
+        map.addControl(new AMap.ToolBar());
+        map.addControl(new AMap.Scale());
+        map.addControl(new AMap.OverView({isOpen:true}));
+    });
+    $('#city').bind('contentChanged', getNews);
+    function getNews() {
+        $.get('http://47.101.65.26:8000/getNewsByCity?city='+city, e => {
+            // console.log(e);
+            if (!e.data || e.data.length == 0) {
+                $('#content').html('无旅游新闻');
+                return;
+            }
+            var content = '';
+            var newsCache = [];
+            var i = 0, n = e.data.length
+            while (newsCache.length < 10) {
+                if (i >= n) break;
+                if (!e.data[i].content) i++;
+                let flag = true;
+                for (let j = 0; j<newsCache.length; j++) {
+                    if (newsCache[j] == e.data[i].content.slice(0, 30)) {
+                        flag = false;
+                        break;
+                    }
+                }
+                if (!flag) {
+                    i++;
+                    continue;
+                }
+                let hasImage= false;
+                if (e.data[i].imageUrls) hasImage=true;
+                content += '<div id="newsItem" style="background-color:#C0C0C0;" onclick="window.open('+"'"+e.data[i].url+"'"+')"><h3 style="margin:5px 0px 5px;">'+e.data[i].title+'</h3>'+
+                    '<div style="display:flex;width: 100%;height: 100%;margin:5px 0px 5px;"><p style="width:';
+                if (hasImage) content += 80;
+                else content += 100;
+                content+='%;overflow : hidden;text-overflow: ellipsis;display: -webkit-box;-webkit-line-clamp: 5;-webkit-box-orient: vertical;">'+
+                    e.data[i].content+'</p>';
+                if (hasImage) {
+                    content += '<img src="'+e.data[i].imageUrls[0]+'" style="height:120px;width:120px;float:right;" />';
+                }
+                content+='</div></div>';
+                newsCache.push(e.data[i++].content.slice(0, 30));
+            }
+            // console.log(newsCache)
+            // console.log(content)
+            $('#content').html(content);
+        })
+    }
+    $(function(){
+        lat = map.B.center.P;
+        lng = map.B.center.Q;
+        setCityByLocation();
+    })
+    function openInfo(e) {
+        //构建信息窗体中显示的内容
+        var info = [];
+        info.push('<div><b>'+e.regeocode.addressComponent.country+'   '+e.regeocode.addressComponent.province+'   '+
+            e.regeocode.addressComponent.city+'   '+e.regeocode.addressComponent.district+'</b></div>');
+        $.get('http://47.101.65.26:8000/getWeatherForecast?city='+city, e1 => {
+            // console.log(e1);
+            var str1='', str2='', str3='';
+            var flag1 = false, flag2 = false;
+            if (e1.results) {
+                flag1 = true;
+                info.push('<div>今日天气：'+e1.results[0].daily[0].low+'℃~'+e1.results[0].daily[0].high+'℃   '+
+                    e1.results[0].daily[0].text_day+'   '+e1.results[0].daily[0].wind_direction+'风</div>');
+                str1 = '<div>天气预报：</div>',
+                str2 = '<div>'+e1.results[0].daily[1].date+'   '+e1.results[0].daily[1].low+'℃~'+e1.results[0].daily[1].high+'℃   '+
+                        e1.results[0].daily[1].text_day+'   '+e1.results[0].daily[1].wind_direction+'风</div>',
+                str3 = '<div>'+e1.results[0].daily[2].date+'   '+e1.results[0].daily[2].low+'℃~'+e1.results[0].daily[2].high+'℃   '+
+                        e1.results[0].daily[2].text_day+'   '+e1.results[0].daily[2].wind_direction+'风</div>';
+
+            }
+            $.get('http://47.101.65.26:8000/getLifeSuggestion?city='+city, e2 => {
+                // console.log(e2);
+                if (e2.results) {
+                    flag2 = true;
+                    info.push('<div>体感：'+e2.results[0].suggestion.dressing.brief+'</div>');
+                    info.push('<div>旅行：'+e2.results[0].suggestion.travel.brief+'</div>');
+                }
+                info.push(str1);
+                info.push(str2);
+                info.push(str3);
+                if (!flag1 && !flag2) {
+                    info.push('<div>此地区暂时无法获取天气信息</div>');
+                }
+                var opts = {
+                    autoMove: true,
+                    closeWhenClickMap: true,
+                    content: info.join(""),  //使用默认信息窗体框样式，显示信息内容
+                    size: [330, 160],
+                    position: new AMap.LngLat(lng, lat)
+                }
+                infoWindow = new AMap.InfoWindow(opts);
+                infoWindow.open(map);
+            })
+        })
+    }
+    function setCityByLocation() {
+        $.get('https://restapi.amap.com/v3/geocode/regeo?key=4313ddb82454d7f1875c2e7c237a4332&location='+lng+','+lat, function(e) {
+            // console.log(e);
+            city = e.regeocode.addressComponent.city;
+            if (Array.isArray(city) && city.length === 0) {
+                city = e.regeocode.addressComponent.province;
+            }
+            if (city!='') {
+                $('#city').html('<b>地区：'+city+'</b>');
+                if (city[city.length-1] == '市' | city[city.length-1] == '省') city = city.substr(0, city.length-1);
+                else if (city.substr(city.length-5, city.length) == "特別行政區") city = city.substr(0, city.length-5);
+                $('#city').trigger('contentChanged');
+                $('#content').html('');
+                spinner.spin($('#content').get(0))
+                openInfo(e);
+            } else {
+                $('#city').html('<b>地区：无</b>');
+                $('#content').html('请点击地图重新选择地区（中国境内）');
+            }
+        })
+    }
+    map.on('click', function(e) {
+        lat = e.lnglat.P;
+        lng = e.lnglat.Q;
+        // console.log(lat, lng);
+        setCityByLocation(lat, lng);
+    });
+</script>
+
+</html>
